@@ -1,0 +1,26 @@
+admin:
+  username: ${PG_ADMIN_USER}
+  password: ${PG_ADMIN_PASSWORD}
+  port: 5432
+
+# Template produces: {group}-{contour}-pg.hostname.com
+hostname_template: "{group}-{contour}-pg.hostname.com"
+
+contours: [one, two, thee, four]
+
+groups:
+  - name: orange
+  - name: apple
+    overrides:
+      one: apple-one-pg.hostname.com
+  - name: pineapple
+    writable: true
+
+defaults:
+  statement_timeout_ms: 30000
+  idle_in_transaction_timeout_ms: 30000
+  max_rows: 1000
+  pool_min_size: 0
+  pool_max_size: 4
+  connect_timeout_s: 5
+  default_database: postgres
