@@ -13,10 +13,10 @@ import (
 )
 
 type QueryResult struct {
-	Columns  []string `json:"columns"`
-	Rows     [][]any  `json:"rows"`
-	RowCount int      `json:"row_count"`
-	Truncated bool    `json:"truncated"`
+	Columns   []string `json:"columns"`
+	Rows      [][]any  `json:"rows"`
+	RowCount  int      `json:"row_count"`
+	Truncated bool     `json:"truncated"`
 }
 
 type ExplainResult struct {
@@ -85,12 +85,33 @@ func ExecuteQuery(
 
 func execRead(ctx context.Context, pool interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }, sql string, params []any, schema *string, maxRows int) (*QueryResult, error) {
 	if schema != nil {
+		tx, err := pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+		if err != nil {
+			return nil, fmt.Errorf("begin read transaction: %w", err)
+		}
+		defer rollbackTx(ctx, tx)
+
 		schemaID := pgx.Identifier{*schema}.Sanitize()
-		if _, err := pool.Query(ctx, fmt.Sprintf("SET search_path TO %s", schemaID)); err != nil {
+		if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL search_path TO %s", schemaID)); err != nil {
 			return nil, fmt.Errorf("set search_path: %w", err)
 		}
+		rows, err := tx.Query(ctx, sql, params...)
+		if err != nil {
+			return nil, wrapPGError(err)
+		}
+		defer rows.Close()
+		result, err := collectRows(rows, maxRows)
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("commit read transaction: %w", err)
+		}
+		return result, nil
 	}
 
 	rows, err := pool.Query(ctx, sql, params...)
@@ -109,7 +130,7 @@ func execWrite(ctx context.Context, pool interface {
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer rollbackTx(ctx, tx)
 
 	if schema != nil {
 		schemaID := pgx.Identifier{*schema}.Sanitize()
@@ -133,6 +154,13 @@ func execWrite(ctx context.Context, pool interface {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return result, nil
+}
+
+// Cleanup must still be able to release the connection after request cancellation.
+func rollbackTx(ctx context.Context, tx pgx.Tx) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_ = tx.Rollback(cleanupCtx)
 }
 
 func collectRows(rows pgx.Rows, maxRows int) (*QueryResult, error) {

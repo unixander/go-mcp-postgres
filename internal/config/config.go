@@ -21,13 +21,14 @@ type GroupConfig struct {
 }
 
 type Defaults struct {
-	StatementTimeoutMs            int    `mapstructure:"statement_timeout_ms"`
-	MaxRows                       int    `mapstructure:"max_rows"`
-	PoolMinSize                   int    `mapstructure:"pool_min_size"`
-	PoolMaxSize                   int    `mapstructure:"pool_max_size"`
-	ConnectTimeoutS               int    `mapstructure:"connect_timeout_s"`
-	DefaultDatabase               string `mapstructure:"default_database"`
-	IdleInTransactionTimeoutMs    int    `mapstructure:"idle_in_transaction_timeout_ms"`
+	StatementTimeoutMs         int    `mapstructure:"statement_timeout_ms"`
+	MaxRows                    int    `mapstructure:"max_rows"`
+	PoolMinSize                int    `mapstructure:"pool_min_size"`
+	PoolMaxSize                int    `mapstructure:"pool_max_size"`
+	PoolMaxIdleTimeS           int    `mapstructure:"pool_max_idle_time_s"`
+	ConnectTimeoutS            int    `mapstructure:"connect_timeout_s"`
+	DefaultDatabase            string `mapstructure:"default_database"`
+	IdleInTransactionTimeoutMs int    `mapstructure:"idle_in_transaction_timeout_ms"`
 }
 
 type Config struct {
@@ -68,6 +69,7 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("defaults.max_rows", 1000)
 	v.SetDefault("defaults.pool_min_size", 0)
 	v.SetDefault("defaults.pool_max_size", 4)
+	v.SetDefault("defaults.pool_max_idle_time_s", 300)
 	v.SetDefault("defaults.connect_timeout_s", 5)
 	v.SetDefault("defaults.default_database", "postgres")
 	v.SetDefault("defaults.idle_in_transaction_timeout_ms", 30000)
@@ -85,6 +87,9 @@ func Load(path string) (*Config, error) {
 }
 
 func validate(cfg *Config) error {
+	if cfg.Defaults.PoolMaxIdleTimeS <= 0 {
+		return fmt.Errorf("defaults.pool_max_idle_time_s must be positive")
+	}
 	validContours := make(map[string]bool, len(cfg.Contours))
 	for _, c := range cfg.Contours {
 		validContours[c] = true

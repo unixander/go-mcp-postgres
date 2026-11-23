@@ -114,9 +114,17 @@ defaults:
   max_rows: 1000                       # Hard cap on rows returned by execute_query
   pool_min_size: 0
   pool_max_size: 4
+  pool_max_idle_time_s: 300             # Close unused connections after 5 minutes
   connect_timeout_s: 5
   default_database: postgres           # Used by discovery tools when no db is specified
 ```
+
+Idle PostgreSQL connections are closed after `pool_max_idle_time_s` seconds
+(default: 300; must be positive), on the next pool health check. Checks run every
+30 seconds, or at the idle timeout if it is shorter. Active connections are not
+interrupted. The pool stays available and opens fresh connections on demand.
+With `pool_min_size: 0`, a completely idle pool can close all its connections;
+a positive minimum retains a baseline of connections.
 
 ### Hostname resolution
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -18,10 +19,10 @@ type poolKey struct {
 
 // Manager holds one pgxpool.Pool per (group, contour, database) triple.
 type Manager struct {
-	mu      sync.Mutex
-	pools   map[poolKey]*pgxpool.Pool
-	res     *resolver.Resolver
-	cfg     *config.Config
+	mu    sync.Mutex
+	pools map[poolKey]*pgxpool.Pool
+	res   *resolver.Resolver
+	cfg   *config.Config
 }
 
 func NewManager(res *resolver.Resolver, cfg *config.Config) *Manager {
@@ -74,6 +75,11 @@ func (m *Manager) build(ctx context.Context, group, contour, database string) (*
 	d := m.cfg.Defaults
 	pcfg.MinConns = int32(d.PoolMinSize)
 	pcfg.MaxConns = int32(d.PoolMaxSize)
+	if d.PoolMaxIdleTimeS > 0 {
+		pcfg.MaxConnIdleTime = time.Duration(d.PoolMaxIdleTimeS) * time.Second
+		// Idle connections are retired by the pool's periodic health check.
+		pcfg.HealthCheckPeriod = min(30*time.Second, pcfg.MaxConnIdleTime)
+	}
 	pcfg.AfterConnect = safety.AfterConnect(safety.SessionConfig{
 		StatementTimeoutMs:         d.StatementTimeoutMs,
 		IdleInTransactionTimeoutMs: d.IdleInTransactionTimeoutMs,
